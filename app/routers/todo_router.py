@@ -20,8 +20,11 @@ async def create_todo(
 ):
     """
     Create a new todo.
+    For testing: using hardcoded user ID. In real app, this would come from auth.
     """
-    return await service.create_todo(payload)
+    # TODO: Replace with actual user from authentication
+    test_user_id = "507f1f77bcf86cd799439011"  # Hardcoded for testing
+    return await service.create_todo(payload, test_user_id)
 
 
 @router.get(
@@ -32,9 +35,12 @@ async def list_todos(
     service: TodoService = Depends(get_todo_service),
 ):
     """
-    Get all todos.
+    Get all todos for the current user.
+    For testing: using hardcoded user ID. In real app, this would come from auth.
     """
-    return await service.list_todos()
+    # TODO: Replace with actual user from authentication
+    test_user_id = "507f1f77bcf86cd799439011"  # Hardcoded for testing
+    return await service.list_todos(test_user_id)
 
 
 @router.get(
@@ -62,8 +68,11 @@ async def update_todo(
 ):
     """
     Update a todo.
+    For testing: using hardcoded user ID. In real app, this would come from auth.
     """
-    return await service.update_todo(todo_id, payload)
+    # TODO: Replace with actual user from authentication
+    test_user_id = "507f1f77bcf86cd799439011"  # Hardcoded for testing
+    return await service.update_todo(todo_id, payload, test_user_id)
 
 
 @router.delete(
@@ -79,3 +88,19 @@ async def delete_todo(
     """
     await service.delete_todo(todo_id)
     return None
+
+
+@router.get(
+    "/stats",
+    response_model=dict,
+)
+async def get_todo_stats(
+    service: TodoService = Depends(get_todo_service),
+):
+    """
+    Get user's todo statistics (total, completed, open, can_create_more).
+    For testing: using hardcoded user ID. In real app, this would come from auth.
+    """
+    # TODO: Replace with actual user from authentication
+    test_user_id = "507f1f77bcf86cd799439011"  # Hardcoded for testing
+    return await service.get_user_todo_stats(test_user_id)

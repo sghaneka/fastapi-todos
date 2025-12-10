@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from app.config import get_settings
 from app.db import init_db
 from app.routers import todo_router
+from app.routers import user_router
 
 
 @asynccontextmanager
@@ -30,6 +31,7 @@ app = FastAPI(
 
 # Include routers
 app.include_router(todo_router.router)
+app.include_router(user_router.router)
 
 
 @app.get("/")
