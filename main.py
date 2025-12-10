@@ -11,10 +11,13 @@ from app.routers import todo_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    print("🚀 Starting up...")
     settings = get_settings()
     await init_db(settings)
+    print("✅ Database initialized")
     yield
     # Shutdown - add cleanup code here if needed
+    print("🛑 Shutting down...")
 
 
 # Create FastAPI app
