@@ -1,0 +1,66 @@
+version: "3.8"
+
+services:
+  # MongoDB database
+  mongodb:
+    image: mongo:7.0
+    container_name: fastapi-todos-mongodb
+    restart: unless-stopped
+    ports:
+      - "27018:27017" # Changed to avoid conflict with existing MongoDB
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - fastapi-todos-network
+
+  # Redis cache
+  redis:
+    image: redis:7.2-alpine
+    container_name: fastapi-todos-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - fastapi-todos-network
+
+  # MongoDB Express (Web UI for MongoDB)
+  mongo-express:
+    image: mongo-express:1.0.0
+    container_name: fastapi-todos-mongo-express
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongodb:27017/
+      ME_CONFIG_BASICAUTH: false
+    depends_on:
+      - mongodb
+    networks:
+      - fastapi-todos-network
+
+  # Redis Commander (Web UI for Redis)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: fastapi-todos-redis-commander
+    restart: unless-stopped
+    ports:
+      - "8082:8081"
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    depends_on:
+      - redis
+    networks:
+      - fastapi-todos-network
+
+volumes:
+  mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  fastapi-todos-network:
+    driver: bridge
