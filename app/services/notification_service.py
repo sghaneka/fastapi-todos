@@ -8,15 +8,37 @@ from app.schemas.notification import (
     NotificationUpdate,
 )
 from app.exceptions import ResourceNotFoundException
+from app.queue import get_notification_queue, get_email_queue
+from app.tasks import send_notification_email, cleanup_old_notifications
 
 
 class NotificationService:
-    """Service for managing notifications and events"""
+    """Service for managing notifications and events with background job support"""
 
-    async def create_notification(self, data: NotificationCreate) -> NotificationRead:
-        """Create a new notification"""
+    async def create_notification(
+        self, data: NotificationCreate, send_email: bool = False, user_email: str = None
+    ) -> NotificationRead:
+        """Create a new notification and optionally queue email"""
         notification = Notification(**data.model_dump())
         await notification.insert()
+
+        # Queue background email if requested
+        if send_email and user_email:
+            email_queue = get_email_queue()
+            email_queue.enqueue(
+                send_notification_email, user_email, data.message, data.event_type.value
+            )
+            print(f"📬 Queued email notification for {user_email}")
+
+        return NotificationRead(
+            id=str(notification.id),
+            user_id=notification.user_id,
+            event_type=notification.event_type,
+            message=notification.message,
+            data=notification.data,
+            created_at=notification.created_at,
+            read_at=notification.read_at,
+        )
 
         return NotificationRead(
             id=str(notification.id),
@@ -153,6 +175,12 @@ class NotificationService:
             count += 1
 
         return count
+
+    def queue_cleanup_job(self, days_old: int = 30) -> str:
+        """Queue a background job to clean up old notifications"""
+        notification_queue = get_notification_queue()
+        job = notification_queue.enqueue(cleanup_old_notifications, days_old)
+        return job.id
 
 
 def get_notification_service() -> NotificationService:
