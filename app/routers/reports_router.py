@@ -46,6 +46,7 @@ def create_report(req: CreateReportRequest):
 def get_report_status(job_id: str):
     """
     Check the status (and result) of a job by job_id.
+    Now includes progress information from job meta!
     """
     redis_conn = get_redis_connection()
 
@@ -68,6 +69,16 @@ def get_report_status(job_id: str):
         "ended_at": job.ended_at,
     }
 
+    # Add progress information from job meta
+    if hasattr(job, "meta") and job.meta:
+        response["progress"] = {
+            "percentage": job.meta.get("progress", 0),
+            "current_step": job.meta.get("current_step"),
+            "total_steps": job.meta.get("total_steps"),
+            "message": job.meta.get("message", ""),
+            "detailed_status": job.meta.get("status", status_str),
+        }
+
     if status_str == "finished":
         response["result"] = job.result
     elif status_str == "failed":
@@ -75,6 +86,58 @@ def get_report_status(job_id: str):
         response["error"] = str(job.exc_info)[:500] if job.exc_info else "Unknown error"
 
     return response
+
+
+@router.get("/{job_id}/progress")
+def get_job_progress_and_log(job_id: str):
+    """
+    Get job progress and also log it to FastAPI console
+    Call this endpoint to see progress in your FastAPI terminal!
+    """
+    import logging
+
+    logger = logging.getLogger("fastapi.background_jobs")
+
+    redis_conn = get_redis_connection()
+
+    try:
+        job = Job.fetch(job_id, connection=redis_conn)
+    except NoSuchJobError:
+        logger.warning(f"❌ Job {job_id} not found")
+        return {"job_id": job_id, "status": "not_found"}
+
+    status_str = job.get_status()
+
+    # Build progress info
+    progress_info = {
+        "job_id": job_id,
+        "status": status_str,
+        "progress": 0,
+        "message": "No progress information available",
+    }
+
+    if hasattr(job, "meta") and job.meta:
+        progress_info.update(
+            {
+                "progress": job.meta.get("progress", 0),
+                "current_step": job.meta.get("current_step"),
+                "total_steps": job.meta.get("total_steps"),
+                "message": job.meta.get("message", ""),
+                "detailed_status": job.meta.get("status", status_str),
+            }
+        )
+
+    # Log current status to FastAPI console
+    if status_str == "started" and job.meta:
+        progress = job.meta.get("progress", 0)
+        message = job.meta.get("message", "Processing...")
+        logger.info(f"🔄 Job {job_id[:8]}... - {progress}% - {message}")
+    elif status_str == "finished":
+        logger.info(f"✅ Job {job_id[:8]}... completed successfully!")
+    elif status_str == "failed":
+        logger.error(f"❌ Job {job_id[:8]}... failed")
+
+    return progress_info
 
 
 @router.get("/queue/status")

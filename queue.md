@@ -355,6 +355,187 @@ if __name__ == '__main__':
 | **Monitoring**         | Rich (Bull Board)                | Basic (RQ Dashboard)            |
 | **Production Setup**   | Single deployment                | Multiple processes needed       |
 
+## 🔄 Worker Concurrency & Blocking Behavior
+
+### The Sequential Processing Reality
+
+**Key Insight**: Both systems process jobs **one at a time per worker** - async doesn't change this!
+
+```python
+# Even with async, each worker is sequential:
+async def generate_report(user_id: str):
+    await asyncio.sleep(3)  # Non-blocking sleep
+    await asyncio.sleep(3)  # Non-blocking sleep
+    await asyncio.sleep(3)  # Still takes 9+ seconds total
+
+# Worker still processes jobs sequentially:
+# Job A (9 seconds) → Job B waits → Job C waits
+```
+
+### Single Worker Blocking Example
+
+```bash
+# Queue 3 jobs with 1 worker:
+POST /reports {"user_id": "user1"}  # Job 1: 15 seconds
+POST /reports {"user_id": "user2"}  # Job 2: waits in queue
+POST /reports {"user_id": "user3"}  # Job 3: waits in queue
+
+# Timeline with 1 worker:
+0s:  Job 1 starts (worker busy)
+5s:  Jobs 2 & 3 still waiting...
+10s: Jobs 2 & 3 still waiting...
+15s: Job 1 done, Job 2 starts
+30s: Job 2 done, Job 3 starts
+45s: All jobs complete
+```
+
+### Multiple Workers = True Concurrency
+
+```bash
+# Same 3 jobs with 3 workers:
+Terminal 2: python worker.py  # Worker 1 → Job 1
+Terminal 3: python worker.py  # Worker 2 → Job 2
+Terminal 4: python worker.py  # Worker 3 → Job 3
+
+# Timeline with 3 workers:
+0s:  All 3 jobs start simultaneously
+15s: All 3 jobs complete simultaneously
+```
+
+### Why Async Doesn't Help Worker Concurrency
+
+```python
+# The worker's processing loop (simplified):
+while True:
+    job = queue.get_next_job()      # Get ONE job
+    if job:
+        result = execute_job(job)    # Execute it COMPLETELY
+        save_result(result)          # Save result
+    # Only THEN move to next job
+```
+
+**Each job must finish entirely before the worker looks for the next one.**
+
+### 🔄 NestJS Bull vs Python RQ: Async Behavior Difference
+
+#### NestJS Bull (Same Process + Event Loop)
+
+```typescript
+// Multiple async jobs can run concurrently in SAME process!
+@Process('queue1')
+async handleJob1(job: Job) {
+  await longDatabaseCall();     // Job 1 waits here
+  await anotherAsyncOperation();
+}
+
+@Process('queue2')
+async handleJob2(job: Job) {
+  await httpApiCall();          // Job 2 runs while Job 1 waits!
+  await fileUpload();
+}
+
+// Both jobs run concurrently on Node.js event loop
+// Job 1 waits for DB → Job 2 starts
+// Job 2 waits for API → Job 1 resumes
+// True concurrency within the same process!
+```
+
+#### Python RQ (Separate Processes + No Event Loop)
+
+```python
+# Worker 1 (separate process):
+def job1(data):
+    time.sleep(5)    # Worker 1 blocked - can't do anything else
+    return result
+
+# Worker 2 (separate process):
+def job2(data):
+    time.sleep(3)    # Worker 2 blocked independently
+    return result
+
+# NO concurrency within a single worker process
+# Each worker can only handle one job at a time
+# Must scale with multiple worker processes
+```
+
+### The Key Architectural Difference
+
+**NestJS Bull**:
+
+- ✅ **Intra-process concurrency**: Multiple async jobs within same process
+- ✅ **Event loop**: Jobs yield control during async waits
+- ✅ **Resource sharing**: Shared memory, connections, etc.
+
+**Python RQ**:
+
+- ❌ **No intra-process concurrency**: One job per worker process
+- ✅ **Inter-process concurrency**: Multiple worker processes
+- ❌ **No event loop**: Blocking operations block entire worker
+
+### Example: 5 Jobs with Async Work
+
+**NestJS Bull (1 Process)**:
+
+```
+Process 1 Event Loop:
+Job A: DB call (yields) → Job B starts → Job A resumes → Job C starts...
+Timeline: All 5 jobs interleave and complete in ~5-10 seconds
+```
+
+**Python RQ (1 Worker)**:
+
+```
+Worker 1 Process:
+Job A (complete) → Job B (complete) → Job C (complete)...
+Timeline: 5 jobs × 5 seconds each = 25 seconds sequential
+```
+
+**Python RQ (5 Workers)**:
+
+```
+Worker 1: Job A (5 seconds)
+Worker 2: Job B (5 seconds)
+Worker 3: Job C (5 seconds)
+Worker 4: Job D (5 seconds)
+Worker 5: Job E (5 seconds)
+Timeline: All complete in 5 seconds parallel
+```
+
+### Restaurant Chef Analogy
+
+Think of workers like **single-threaded restaurant chefs**:
+
+- Each chef (worker) makes one dish (job) completely before starting the next
+- Making the dish "async" doesn't help - they still can't start dish #2 until dish #1 is done
+- You need **more chefs** (workers) for concurrency
+
+### Solutions for Better Concurrency
+
+1. **Multiple Worker Processes** (recommended):
+
+   ```bash
+   # Scale workers based on load
+   python worker.py  # Worker 1
+   python worker.py  # Worker 2
+   python worker.py  # Worker 3
+   ```
+
+2. **Break Jobs Into Smaller Chunks**:
+
+   ```python
+   # Instead of one 15-second job:
+   def generate_report_step1(user_id): pass  # 3 seconds
+   def generate_report_step2(user_id): pass  # 3 seconds
+   def generate_report_step3(user_id): pass  # 3 seconds
+   # Other jobs can slip in between steps
+   ```
+
+3. **Priority Queues**:
+   ```python
+   # Fast jobs get priority over slow ones
+   worker = Worker(['fast', 'slow'], connection=redis_conn)
+   ```
+
 ## Running the Systems
 
 ### NestJS Bull (Same Process)

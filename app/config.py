@@ -7,9 +7,14 @@ class Settings(BaseSettings):
     mongo_db: str = "todo_db"
 
     # Redis settings
-    redis_url: str = "redis://localhost:6379"  # Application settings
+    redis_url: str = "redis://localhost:6379"
+
+    # Application settings
     debug: bool = False
     max_open_todos: int = 5
+
+    # Environment
+    environment: str = "development"  # development, staging, production
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

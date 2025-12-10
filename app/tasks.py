@@ -1,8 +1,13 @@
 """Background tasks for async processing"""
 
 import time
+import logging
 from datetime import datetime
 from typing import Dict, Any
+from rq import get_current_job
+
+# Set up logger that can be captured by FastAPI
+logger = logging.getLogger("fastapi.background_jobs")
 
 
 def generate_report(user_id: str, params: dict | None = None) -> dict:
@@ -12,14 +17,54 @@ def generate_report(user_id: str, params: dict | None = None) -> dict:
     """
     params = params or {}
 
+    # Get current RQ job to update its meta (status info)
+    job = get_current_job()
+
+    # Method 1: Update job meta (visible in FastAPI via job status)
+    if job:
+        job.meta["status"] = "starting"
+        job.meta["progress"] = 0
+        job.meta["message"] = f"Starting report generation for user {user_id}"
+        job.save_meta()
+
+    # Method 2: Use logger (can be configured to show in FastAPI console)
+    logger.info(f"🔄 Starting report generation for user {user_id}")
+    logger.info(f"📋 Parameters: {params}")
+
+    # Method 3: Still print to worker console for debugging
     print(f"🔄 Starting report generation for user {user_id}...")
     print(f"📋 Parameters: {params}")
 
-    # Simulate heavy work
-    for i in range(5):
-        print(f"⏳ Processing step {i+1}/5...")
-        # Pretend to do some work, e.g. DB queries, API calls, etc.
+    # Simulate heavy work with progress updates
+    total_steps = 5
+    for i in range(total_steps):
+        step_num = i + 1
+        progress = int((step_num / total_steps) * 100)
+
+        # Update job progress that FastAPI can read
+        if job:
+            job.meta["status"] = "processing"
+            job.meta["progress"] = progress
+            job.meta["current_step"] = step_num
+            job.meta["total_steps"] = total_steps
+            job.meta["message"] = f"Processing step {step_num}/{total_steps}..."
+            job.save_meta()
+
+        # Log progress (visible in FastAPI if logging configured)
+        logger.info(f"⏳ Processing step {step_num}/{total_steps} ({progress}%)")
+
+        # Worker console output
+        print(f"⏳ Processing step {step_num}/{total_steps}...")
+
+        # Pretend to do some work
         time.sleep(3)
+
+    # Final status update
+    if job:
+        job.meta["status"] = "finalizing"
+        job.meta["progress"] = 95
+        job.meta["message"] = "Finalizing report..."
+        job.save_meta()
 
     # In a real app, you'd generate some artifact and store it (S3, DB, etc.)
     report_url = f"https://example.com/reports/{user_id}/some-report-id"
@@ -32,6 +77,16 @@ def generate_report(user_id: str, params: dict | None = None) -> dict:
         "generated_at": datetime.utcnow().isoformat(),
         "processing_time_seconds": 15,
     }
+
+    # Final completion update
+    if job:
+        job.meta["status"] = "completed"
+        job.meta["progress"] = 100
+        job.meta["message"] = f"Report generation completed! URL: {report_url}"
+        job.save_meta()
+
+    logger.info(f"✅ Report generation completed for user {user_id}")
+    logger.info(f"📊 Report URL: {report_url}")
 
     print(f"✅ Report generation completed for user {user_id}")
     print(f"📊 Report URL: {report_url}")

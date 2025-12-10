@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 import uvicorn
 
 from fastapi import FastAPI
@@ -8,6 +9,18 @@ from app.db import init_db
 from app.routers import todo_router
 from app.routers import user_router
 from app.routers import reports_router
+
+# Configure logging to see worker job logs in FastAPI console
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(),  # Console output
+    ],
+)
+
+# Create logger for background jobs
+logger = logging.getLogger("fastapi.background_jobs")
 
 
 @asynccontextmanager
@@ -34,6 +47,17 @@ app = FastAPI(
 app.include_router(todo_router.router)
 app.include_router(user_router.router)
 app.include_router(reports_router.router)
+
+
+# Health check endpoint for Docker
+@app.get("/health")
+def health_check():
+    """Health check endpoint for Docker containers"""
+    return {
+        "status": "healthy",
+        "service": "fastapi-todos",
+        "timestamp": "2025-12-10T00:00:00Z",
+    }
 
 
 @app.get("/")
