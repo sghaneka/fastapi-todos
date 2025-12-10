@@ -13,6 +13,7 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "uvicorn[standard]>=0.38.0",
     "python-multipart>=0.0.5",
+    "email-validator>=2.3.0",
 ]
 
 [project.optional-dependencies]

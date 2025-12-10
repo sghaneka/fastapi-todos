@@ -5,6 +5,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 from app.config import Settings
 from app.models.todo import Todo
+from app.models.user import User
+from app.models.notification import Notification
 
 
 async def init_db(settings: Settings) -> None:
@@ -16,7 +18,7 @@ async def init_db(settings: Settings) -> None:
     db = client[settings.mongo_db]
 
     # register document models here
-    await init_beanie(database=db, document_models=[Todo])
+    await init_beanie(database=db, document_models=[Todo, User, Notification])
 
 
 def get_database_client(settings: Settings) -> AsyncIOMotorClient:
