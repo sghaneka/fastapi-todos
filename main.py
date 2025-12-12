@@ -9,6 +9,8 @@ from app.db import init_db
 from app.routers import todo_router
 from app.routers import user_router
 from app.routers import reports_router
+from app.routers import reports_arq_router
+from app.arq_jobs import init_arq, close_arq
 
 # Configure logging to see worker job logs in FastAPI console
 logging.basicConfig(
@@ -30,8 +32,16 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     await init_db(settings)
     print("✅ Database initialized")
+
+    # Initialize Arq for same-process background jobs
+    await init_arq()
+    print("✅ Arq background jobs initialized")
+
     yield
-    # Shutdown - add cleanup code here if needed
+
+    # Shutdown
+    await close_arq()
+    print("🛑 Arq background jobs closed")
     print("🛑 Shutting down...")
 
 
@@ -46,7 +56,8 @@ app = FastAPI(
 # Include routers
 app.include_router(todo_router.router)
 app.include_router(user_router.router)
-app.include_router(reports_router.router)
+app.include_router(reports_router.router)  # RQ-based (separate process)
+app.include_router(reports_arq_router.router)  # Arq-based (same process)
 
 
 # Health check endpoint for Docker

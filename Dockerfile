@@ -38,6 +38,23 @@ USER appuser
 # Expose port
 EXPOSE 8000
 
-# Default command (FastAPI server)
-# Override this for workers: docker run myapp uv run python worker.py
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default command options:
+# 1. FastAPI only: CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 2. RQ Worker only: CMD ["uv", "run", "python", "worker.py"] 
+# 3. Arq (same process): CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# Default: FastAPI + RQ Workers in same container (inlined)
+CMD ["bash", "-c", "\
+echo '🚀 Starting FastAPI + RQ Workers in container...' && \
+echo '📡 Starting FastAPI server...' && \
+uv run uvicorn main:app --host 0.0.0.0 --port 8000 & \
+sleep 3 && \
+echo '👷 Starting RQ Workers...' && \
+WORKER_NAME=docker-worker-1 uv run python worker.py & \
+WORKER_NAME=docker-worker-2 uv run python worker.py & \
+WORKER_NAME=docker-worker-3 uv run python worker.py & \
+echo '✅ All processes started! FastAPI: http://0.0.0.0:8000' && \
+wait -n && \
+echo '❌ A process exited, shutting down container...' && \
+kill $(jobs -p) 2>/dev/null \
+"]
